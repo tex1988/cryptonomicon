@@ -57,7 +57,8 @@
             </div>
             <div
                 v-if="error"
-                class="text-sm text-red-600">Такой тикер уже добавлен</div>
+                class="text-sm text-red-600">Такой тикер уже добавлен
+            </div>
           </div>
         </div>
         <button
@@ -174,14 +175,16 @@
 </template>
 
 <script>
+const STORAGE_TICKERS_NAME = "cryptonomicon-tickers";
+const TICKER_UPDATE_INTERVAL = 5000;
+
 export default {
   name: "App",
 
   async created() {
-    const f = await fetch(
-        `https://min-api.cryptocompare.com/data/all/coinlist?summary=true`
-    );
-    this.coins = Object.values((await f.json()).Data);
+    this.coins = await this.fetchCoins();
+    this.tickers = this.getTickers();
+    this.tickers.forEach(ticker => this.fetchTicker(ticker));
   },
 
   data() {
@@ -207,33 +210,40 @@ export default {
         this.error = true;
       } else {
         this.addTicker(currentTicker);
+        localStorage.setItem(STORAGE_TICKERS_NAME, JSON.stringify(this.tickers));
       }
     },
 
     addTicker(ticker) {
       this.tickers.push(ticker);
-      this.fetchTickerData(ticker)
+      this.fetchTicker(ticker.name)
       this.tickerInput = "";
       this.hints = "";
     },
 
-    fetchTickerData(ticker) {
+    getTickers() {
+      const data = localStorage.getItem(STORAGE_TICKERS_NAME);
+      return data ? JSON.parse(data) : [];
+    },
+
+    fetchTicker(tickerName) {
       setInterval(async () => {
         const f = await fetch(
-            `https://min-api.cryptocompare.com/data/price?fsym=${ticker.name}&tsyms=USD&api_key=3a20abbc7379ef2d63c3a3f3b78efd53a44870ee29e751b9093726e35f919ecc`
+            `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=3a20abbc7379ef2d63c3a3f3b78efd53a44870ee29e751b9093726e35f919ecc`
         );
         const data = await f.json();
-        this.tickers.find((t) => t.name === ticker.name).price =
+        this.tickers.find((t) => t.name === tickerName).price =
             data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
 
-        if (this.selection?.name === ticker.name) {
+        if (this.selection?.name === tickerName) {
           this.graph.push(data.USD);
         }
-      }, 5000);
+      }, TICKER_UPDATE_INTERVAL);
     },
 
     handleDelete(tickerToRemove) {
       this.tickers = this.tickers.filter((ticker) => ticker !== tickerToRemove);
+      localStorage.setItem(STORAGE_TICKERS_NAME, JSON.stringify(this.tickers));
     },
 
     normalizeGraph() {
@@ -272,7 +282,12 @@ export default {
     isTickerExists(tickerName) {
       let checkedTicker = this.tickers.find(ticker => ticker.name === tickerName);
       return !!checkedTicker;
-    }
+    },
+
+    async fetchCoins() {
+      const data = await fetch(`https://min-api.cryptocompare.com/data/all/coinlist?summary=true`);
+      return Object.values((await data.json()).Data);
+    },
   },
 };
 </script>
