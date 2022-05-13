@@ -84,10 +84,29 @@
       </section>
 
       <template v-if="tickers.length > 0">
+        <div>
+          <button
+              @click="page--"
+              v-if="hasPrevPage"
+              class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+            Назад
+          </button>
+          <button
+              v-if="hasNextPage"
+              @click="page++"
+              class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500">
+            Вперед
+          </button>
+          <div>Фильтр:
+            <input
+                v-model="filter"
+                class="block mx-2 inline-flex pr-10 border-gray-300 text-gray-900 focus:outline-none focus:ring-gray-500 focus:border-gray-500 sm:text-sm rounded-md"
+            ></div>
+        </div>
         <hr class="w-full border-t border-gray-600 my-4"/>
         <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
           <div
-              v-for="t in tickers"
+              v-for="t in getFilteredTickers()"
               :key="t"
               @click="select(t)"
               :class="{
@@ -177,14 +196,27 @@
 <script>
 const STORAGE_TICKERS_NAME = "cryptonomicon-tickers";
 const TICKER_UPDATE_INTERVAL = 5000;
+const MAX_PAGE_SIZE = 6;
 
 export default {
   name: "App",
 
   async created() {
+    const windowData = Object.fromEntries(
+        new URL(window.location).searchParams.entries()
+    );
+
+    if (windowData.filter) {
+      this.filter = windowData.filter;
+    }
+
+    if (windowData.page) {
+      this.page = windowData.page;
+    }
+
     this.coins = await this.fetchCoins();
     this.tickers = this.getTickers();
-    this.tickers.forEach(ticker => this.fetchTicker(ticker));
+    this.tickers.forEach(ticker => this.subscribeTicker(ticker.name));
   },
 
   data() {
@@ -195,11 +227,31 @@ export default {
       graph: [],
       coins: "",
       hints: "",
-      error: false
+      error: false,
+      page: 1,
+      filter: "",
+      hasNextPage: true,
+      hasPrevPage: false,
     };
   },
 
+  watch: {
+    filter() {
+      this.page = 1;
+      this.updateUrl();
+    },
+
+    page() {
+      this.updateUrl();
+    }
+  },
+
   methods: {
+    updateUrl() {
+      const currentUrl = `${window.location.pathname}?filter=${this.filter}&page=${this.page}`;
+      window.history.pushState(null, document.title, currentUrl);
+    },
+
     add(tickerName) {
       const currentTicker = {
         name: tickerName ? tickerName.toUpperCase() : this.tickerInput.toUpperCase(),
@@ -208,6 +260,7 @@ export default {
 
       if (this.isTickerExists(currentTicker.name)) {
         this.error = true;
+        this.tickerInput = currentTicker.name;
       } else {
         this.addTicker(currentTicker);
         localStorage.setItem(STORAGE_TICKERS_NAME, JSON.stringify(this.tickers));
@@ -216,9 +269,10 @@ export default {
 
     addTicker(ticker) {
       this.tickers.push(ticker);
-      this.fetchTicker(ticker.name)
+      this.subscribeTicker(ticker.name)
       this.tickerInput = "";
       this.hints = "";
+      this.filter = "";
     },
 
     getTickers() {
@@ -226,7 +280,17 @@ export default {
       return data ? JSON.parse(data) : [];
     },
 
-    fetchTicker(tickerName) {
+    getFilteredTickers() {
+      const start = (this.page - 1) * MAX_PAGE_SIZE;
+      const end = this.page * MAX_PAGE_SIZE;
+      const filteredTickers = this.tickers
+          .filter(ticker => ticker.name.toLowerCase().includes(this.filter.toLowerCase()));
+      this.hasNextPage = filteredTickers.length > end;
+      this.hasPrevPage = this.page !== 1
+      return filteredTickers.slice(start, end);
+    },
+
+    subscribeTicker(tickerName) {
       setInterval(async () => {
         const f = await fetch(
             `https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=3a20abbc7379ef2d63c3a3f3b78efd53a44870ee29e751b9093726e35f919ecc`
