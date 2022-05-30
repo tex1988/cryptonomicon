@@ -196,10 +196,9 @@
 </template>
 
 <script>
-import {fetchTickers, fetchCoins, subscribeToTicker, unsubscribeFromTicker} from "./api";
+import {fetchCoins, subscribeToTicker, unsubscribeFromTicker} from "./api";
 
 const STORAGE_TICKERS_NAME = "cryptonomicon-tickers";
-//const TICKER_UPDATE_INTERVAL = 5000;
 const MAX_PAGE_SIZE = 6;
 
 export default {
@@ -223,7 +222,6 @@ export default {
     this.tickers.forEach(ticker => {
       subscribeToTicker(ticker.name, newPrice => this.updateTicker(ticker.name, newPrice));
     });
-    //setInterval(this.updateTickers, TICKER_UPDATE_INTERVAL);
   },
 
   data() {
@@ -338,23 +336,13 @@ export default {
       return data ? JSON.parse(data) : [];
     },
 
-    async updateTickers() {
-      if (this.tickers.length) {
-        const tickerData = await fetchTickers(this.tickers.map(t => t.name));
-        this.tickers.forEach(ticker => {
-          const price = tickerData[ticker.name.toUpperCase()];
-          ticker.price = price ?? "-";
-        });
-      }
-      /*if (this.selectedTicker?.name === tickerName) {
-        this.graph.push(tickerData.USD);
-      }*/
-    },
-
     updateTicker(tickerName, price) {
       this.tickers
           .filter(ticker => ticker.name === tickerName)
           .forEach(ticker => ticker.price = price)
+        if (this.selectedTicker?.name === tickerName) {
+          this.graph.push(price);
+        }
     },
 
     formatPrice(price) {

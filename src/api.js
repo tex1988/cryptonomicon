@@ -1,29 +1,53 @@
 const API_KEY = "3a20abbc7379ef2d63c3a3f3b78efd53a44870ee29e751b9093726e35f919ecc";
+const AGGREGATE_INDEX = "5";
 const tickersHandlers = new Map();
+const websocket = new WebSocket(`wss://streamer.cryptocompare.com/v2/?api_key=${API_KEY}`)
 
-//TODO: URL search params
-export async function fetchTickers() {
-    if(tickersHandlers.size !== 0) {
-        const f = await fetch(
-            `https://min-api.cryptocompare.com/data/pricemulti?fsyms=${[...tickersHandlers.keys()].join(",")}&tsyms=USD&api_key=${API_KEY}`
-        );
-        const updatedPrices =  Object.fromEntries(
-            Object.entries(await f.json()).map(([key, value]) => [key, value.USD])
-        );
-        Object.entries(updatedPrices).forEach(([currency, newPrice]) => {
-            const handlers = tickersHandlers.get(currency) ?? [];
-            handlers.forEach(handler => handler(newPrice))
-        });
+websocket.addEventListener("message", e => {
+    const {TYPE: type, FROMSYMBOL: currency, PRICE: newPrice} = JSON.parse(e.data);
+    if (type === AGGREGATE_INDEX) {
+        const handlers = tickersHandlers.get(currency) ?? [];
+        handlers.forEach(handler => handler(newPrice))
+    }
+})
+
+function sendMessageToWebSocket(message) {
+    const stringifiedMessage = JSON.stringify(message);
+    if (websocket.readyState === WebSocket.OPEN) {
+        websocket.send(stringifiedMessage);
+    } else {
+        websocket.addEventListener("open", () => {
+                websocket.send(stringifiedMessage);
+            },
+            {once: true});
     }
 }
 
-export function subscribeToTicker(ticker, callback) {
-    const subscribers = tickersHandlers.get(ticker) || [];
-    tickersHandlers.set(ticker, [...subscribers, callback]);
+function subscribeToTickerOnWebSocket(tickerName) {
+    const message = {
+        "action": "SubAdd",
+        "subs": [`5~CCCAGG~${tickerName}~USD`]
+    };
+    sendMessageToWebSocket(message);
 }
 
-export function unsubscribeFromTicker(ticker) {
-    tickersHandlers.delete(ticker)
+function unsubscribeTickerFromWebSocket(tickerName) {
+    const message = {
+        "action": "SubRemove",
+        "subs": [`5~CCCAGG~${tickerName}~USD`]
+    };
+    sendMessageToWebSocket(message);
+}
+
+export function subscribeToTicker(tickerName, callback) {
+    const subscribers = tickersHandlers.get(tickerName) || [];
+    tickersHandlers.set(tickerName, [...subscribers, callback]);
+    subscribeToTickerOnWebSocket(tickerName);
+}
+
+export function unsubscribeFromTicker(tickerName) {
+    tickersHandlers.delete(tickerName)
+    unsubscribeTickerFromWebSocket(tickerName)
 }
 
 export async function fetchCoins() {
@@ -32,5 +56,3 @@ export async function fetchCoins() {
     );
     return Object.values((await data.json()).Data);
 }
-
-setInterval(fetchTickers, 5000);
